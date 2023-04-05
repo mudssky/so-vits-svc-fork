@@ -109,19 +109,21 @@ python preprocess_hubert_f0.py
 
 After completing the above steps, the dataset directory will contain the preprocessed data, and the dataset_raw folder can be deleted.
 
+#### You can modify some parameters in the generated config.json
+
+* `keep_ckpts`: Keep the last `keep_ckpts` models during training. Set to `0` will keep them all. Default is `3`.
+
+* `all_in_mem`: Load all dataset to RAM. It can be enabled when the disk IO of some platforms is too low and the system memory is **much larger** than your dataset.
+
 ## 🏋️‍♀️ Training
 
 ```shell
 python train.py -c configs/config.json -m 44k
 ```
 
-Note: During training, the old models will be automatically cleared and only the latest three models will be kept. If you want to prevent overfitting, you need to manually backup the model checkpoints, or modify the configuration file `keep_ckpts` to 0 to never clear them.
-
 ## 🤖 Inference
 
 Use [inference_main.py](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/inference_main.py)
-
-Up to this point, the usage of version 4.0 (training and inference) is exactly the same as version 3.0, with no changes (inference now has command line support).
 
 ```shell
 # Example
@@ -129,19 +131,19 @@ python inference_main.py -m "logs/44k/G_30400.pth" -c "configs/config.json" -n "
 ```
 
 Required parameters:
-- -m, --model_path: path to the model.
-- -c, --config_path: path to the configuration file.
-- -n, --clean_names: a list of wav file names located in the raw folder.
-- -t, --trans: pitch adjustment, supports positive and negative (semitone) values.
-- -s, --spk_list: target speaker name for synthesis.
-- -cl, --clip: voice forced slicing, set to 0 to turn off(default), duration in seconds.
+- `-m` | `--model_path`: path to the model.
+- `-c` | `--config_path`: path to the configuration file.
+- `-n` | `--clean_names`: a list of wav file names located in the raw folder.
+- `-t` | `--trans`: pitch adjustment, supports positive and negative (semitone) values.
+- `-s` | `--spk_list`: target speaker name for synthesis.
+- `-cl` | `--clip`: voice forced slicing, set to 0 to turn off(default), duration in seconds.
 
 Optional parameters: see the next section
-- -lg, --linear_gradient：The cross fade length of two audio slices in seconds. If there is a discontinuous voice after forced slicing, you can adjust this value. Otherwise, it is recommended to use the default value of 0.
-- -fmp, --f0_mean_pooling：是否对F0使用均值滤波器(池化)，对部分哑音可能有改善。注意，启动该选项会导致推理速度下降，默认关闭
-- -a, --auto_predict_f0: automatic pitch prediction for voice conversion, do not enable this when converting songs as it can cause serious pitch issues.
-- -cm, --cluster_model_path: path to the clustering model, fill in any value if clustering is not trained.
-- -cr, --cluster_infer_ratio: proportion of the clustering solution, range 0-1, fill in 0 if the clustering model is not trained.
+- `-lg` | `--linear_gradient`: The cross fade length of two audio slices in seconds. If there is a discontinuous voice after forced slicing, you can adjust this value. Otherwise, it is recommended to use the default value of 0.
+- `-fmp` | `--f0_mean_pooling`: Apply mean filter (pooling) to f0，which may improve some hoarse sounds. Enabling this option will reduce inference speed.
+- `-a` | `--auto_predict_f0`: automatic pitch prediction for voice conversion, do not enable this when converting songs as it can cause serious pitch issues.
+- `-cm` | `--cluster_model_path`: path to the clustering model, fill in any value if clustering is not trained.
+- `-cr` | `--cluster_infer_ratio`: proportion of the clustering solution, range 0-1, fill in 0 if the clustering model is not trained.
 
 ## 🤔 Optional Settings
 
@@ -164,6 +166,11 @@ The existing steps before clustering do not need to be changed. All you need to 
 - Inference process:
   - Specify "cluster_model_path" in inference_main.
   - Specify "cluster_infer_ratio" in inference_main, where 0 means not using clustering at all, 1 means only using clustering, and usually 0.5 is sufficient.
+
+### F0 mean filtering
+
+Introduction: The mean filtering of F0 can effectively reduce the hoarse sound caused by the predicted fluctuation of pitch (the hoarse sound caused by reverb or harmony can not be eliminated temporarily). This function has been greatly improved on some songs. If the song appears dumb after reasoning, it can be considered to open.
+- Set f0_mean_pooling to true in inference_main
 
 ### [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kv-3y2DmZo0uya8pEr1xk7cSB-4e_Pct?usp=sharing) [sovits4_for_colab.ipynb](https://colab.research.google.com/drive/1kv-3y2DmZo0uya8pEr1xk7cSB-4e_Pct?usp=sharing)
 
