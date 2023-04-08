@@ -15,6 +15,8 @@ import torch
 import time
 import pathlib
 import json
+import re
+
 logging.getLogger('numba').setLevel(logging.WARNING)
 logging.getLogger('markdown_it').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
@@ -39,7 +41,8 @@ def get_cuda_list():
 
 # 输入音频转换
 def vc_fn(sid, input_audio, vc_transform, auto_f0, cluster_ratio, slice_db, noise_scale,
-          pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, output_path):
+          pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, output_path,
+          input_filename=''):
     global model
     try:
         if input_audio is None:
@@ -62,9 +65,11 @@ def vc_fn(sid, input_audio, vc_transform, auto_f0, cluster_ratio, slice_db, nois
         os.remove(temp_path)
         # 构建保存文件的路径，并保存到results文件夹内
         try:
+            if input_filename:
+                input_filename = input_filename+'_'
             timestamp = str(int(time.time()))
             output_file = os.path.join(
-                output_path, sid + "_" + timestamp + ".wav")
+                output_path, sid + "_" + input_filename + timestamp + ".wav")
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
             with open(output_file, 'wb') as f:
@@ -75,6 +80,8 @@ def vc_fn(sid, input_audio, vc_transform, auto_f0, cluster_ratio, slice_db, nois
             print(e)
             return "自动保存失败，请手动保存，音乐输出见下", (model.target_sample, _audio)
     except Exception as e:
+        print(e)
+        print(e.with_traceback())
         return "异常信息:"+str(e)+"\n请排障后重试", None
 
 # 调用tts
@@ -132,6 +139,23 @@ def vc_fn2(sid, vc_transform, auto_f0, cluster_ratio,
     os.remove(output_file)
     os.remove(save_path2)
     return a, b
+
+
+def batch_vc(sid, input_audio_folder, vc_transform, auto_f0, cluster_ratio, slice_db,
+             noise_scale,
+             pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, output_path,
+             progress=gr.Progress()):
+    audio_list = get_audio_list(input_audio_folder)
+    for audio_path in progress.tqdm(audio_list, desc="convert audio"):
+        audio_data = gr_pu.audio_from_file(audio_path)
+        filename = pathlib.PurePath(audio_path).name
+        name = filename.split('.')[0]
+        print(audio_path)
+        # print(audio_data)
+        vc_fn(sid, audio_data, vc_transform, auto_f0, cluster_ratio, slice_db,
+              noise_scale, pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling,
+              output_path, input_filename=name)
+    return '全部转换完成'
 
 
 def get_config_file(model_foldername):
@@ -212,10 +236,36 @@ def before_app_create():
     pass
 
 
+def is_audio(filename):
+    patten = r'[\s\S]*\.(mp3|wav|flac|m4a)'
+    if re.match(patten, filename):
+        return True
+    return False
+
+
 def get_first_element(list):
     if list:
         return list[0]
     return 'no_element'
+
+
+def recursive_scandir(path, callback):
+    for entry in os.scandir(path):
+        if entry.is_file():
+            if callback:
+                callback(entry.path)
+        elif entry.is_dir():
+            recursive_scandir(entry.path, callback=None)
+
+
+def get_audio_list(path):
+    audio_list = []
+
+    def collect_audio(pathname):
+        if is_audio(pathname):
+            audio_list.append(pathname)
+    recursive_scandir(path, collect_audio)
+    return audio_list
 
 
 app = gr.Blocks()
@@ -279,6 +329,8 @@ with app:
             tts_rate = gr.Number(label="tts语速", value=0)
 
             vc_input3 = gr.Audio(label="上传音频")
+            bacth_convert_folder = gr.Textbox(
+                label="批量转换音频的目录，会自动找到目录中的音频文件进行转换", value="input_folder")
             vc_transform = gr.Number(
                 label="变调（整数，可以正负，半音数量，升高八度就是12）", value=0)
             cluster_ratio = gr.Number(
@@ -303,7 +355,8 @@ with app:
                 interactive=True)
             vc_submit = gr.Button("音频直接转换", variant="primary")
             vc_submit2 = gr.Button("文字转音频+转换", variant="primary")
-            output_path = gr.Textbox(label="输出路径", value="result")
+            bacth_convert_button = gr.Button("批量转换音频", variant="primary")
+            output_path = gr.Textbox(label="输出路径", value="results")
             vc_output1 = gr.Textbox(label="Output Message")
             vc_output2 = gr.Audio(label="Output Audio")
         vc_submit.click(vc_fn, [sid, vc_input3, vc_transform, auto_f0, cluster_ratio,
@@ -315,5 +368,11 @@ with app:
                                   lgr_num, text2tts, tts_rate, F0_mean_pooling,
                                   output_path],
                          [vc_output1, vc_output2])
+        bacth_convert_button.click(batch_vc, [sid, bacth_convert_folder, vc_transform,
+                                              auto_f0,
+                                              cluster_ratio, slice_db, noise_scale,
+                                              pad_seconds, cl_num, lg_num, lgr_num,
+                                              F0_mean_pooling,
+                                              output_path], [vc_output1])
 
-app.launch(server_port=7863)
+app.queue(concurrency_count=20).launch(server_name="0.0.0.0", server_port=7863)
