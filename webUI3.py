@@ -41,7 +41,7 @@ def get_cuda_list():
 
 # 输入音频转换
 def vc_fn(sid, input_audio, vc_transform, auto_f0, cluster_ratio, slice_db, noise_scale,
-          pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, output_path,
+          pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, enhancer_adaptive_key, output_path,
           input_filename=''):
     global model
     try:
@@ -60,7 +60,8 @@ def vc_fn(sid, input_audio, vc_transform, auto_f0, cluster_ratio, slice_db, nois
         soundfile.write(temp_path, audio, sampling_rate, format="wav")
         _audio = model.slice_inference(temp_path, sid, vc_transform, slice_db,
                                        cluster_ratio, auto_f0, noise_scale, pad_seconds,
-                                       cl_num, lg_num, lgr_num, F0_mean_pooling)
+                                       cl_num, lg_num, lgr_num, F0_mean_pooling,
+                                       enhancer_adaptive_key)
         model.clear_empty()
         os.remove(temp_path)
         # 构建保存文件的路径，并保存到results文件夹内
@@ -104,7 +105,8 @@ def tts_func(_text, _rate):
                           "--text", _text,
                          "--write-media", output_file,
                           "--voice", voice,
-                          "--rate="+ratestr], shell=True,
+                          "--rate="+ratestr],
+                         #   shell=True,
                          stdout=subprocess.PIPE,
                          stdin=subprocess.PIPE)
     p.wait()
@@ -116,8 +118,9 @@ def tts_func(_text, _rate):
 def vc_fn2(sid, vc_transform, auto_f0, cluster_ratio,
            slice_db, noise_scale,
            pad_seconds, cl_num, lg_num, lgr_num,
-           text2tts, tts_rate, F0_mean_pooling, output_path):
+           text2tts, tts_rate, F0_mean_pooling, enhancer_adaptive_key, output_path):
     # 使用edge-tts把文字转成音频
+    print(text2tts, tts_rate)
     output_file = tts_func(text2tts, tts_rate)
 
     # 调整采样率
@@ -135,6 +138,7 @@ def vc_fn2(sid, vc_transform, auto_f0, cluster_ratio,
 
     a, b = vc_fn(sid, vc_input, vc_transform, auto_f0, cluster_ratio, slice_db,
                  noise_scale, pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling,
+                 enhancer_adaptive_key,
                  output_path)
     os.remove(output_file)
     os.remove(save_path2)
@@ -143,7 +147,8 @@ def vc_fn2(sid, vc_transform, auto_f0, cluster_ratio,
 
 def batch_vc(sid, input_audio_folder, vc_transform, auto_f0, cluster_ratio, slice_db,
              noise_scale,
-             pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling, output_path,
+             pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling,
+             enhancer_adaptive_key, output_path,
              progress=gr.Progress()):
     audio_list = get_audio_list(input_audio_folder)
     for audio_path in progress.tqdm(audio_list, desc="convert audio"):
@@ -154,6 +159,7 @@ def batch_vc(sid, input_audio_folder, vc_transform, auto_f0, cluster_ratio, slic
         # print(audio_data)
         vc_fn(sid, audio_data, vc_transform, auto_f0, cluster_ratio, slice_db,
               noise_scale, pad_seconds, cl_num, lg_num, lgr_num, F0_mean_pooling,
+              enhancer_adaptive_key,
               output_path, input_filename=name)
     return '全部转换完成'
 
@@ -198,7 +204,7 @@ def conver_path_glob(pathglob):
     return pathglob
 
 
-def load_model_func(model_path, config_path, kmeans_cluster_model_path):
+def load_model_func(model_path, config_path, kmeans_cluster_model_path, enhance):
     global model
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -209,10 +215,11 @@ def load_model_func(model_path, config_path, kmeans_cluster_model_path):
     else:
         spk = "未检测到音色"
     if not kmeans_cluster_model_path:
-        model = Svc(model_path, config_path)
+        model = Svc(model_path, config_path, nsf_hifigan_enhance=enhance)
     else:
         model = Svc(model_path, config_path,
-                    cluster_model_path=kmeans_cluster_model_path)
+                    cluster_model_path=kmeans_cluster_model_path,
+                    nsf_hifigan_enhance=enhance)
     spk_list = list(spk_dict.keys())
     return gr.Dropdown.update(value=spk, choices=spk_list), "模型加载成功"
 
@@ -233,7 +240,8 @@ def handle_model_path_select(choice_model_folder):
 
 def before_app_create():
     # load_options()
-    pass
+    if not os.path.exists(mods_path):
+        os.makedirs(mods_path)
 
 
 def is_audio(filename):
@@ -267,6 +275,8 @@ def get_audio_list(path):
     recursive_scandir(path, collect_audio)
     return audio_list
 
+
+before_app_create()
 
 app = gr.Blocks()
 with app:
@@ -302,6 +312,9 @@ with app:
             device = gr.Dropdown(label="推理设备，默认为自动选择cpu和gpu", choices=[
                                  "Auto", *cuda_list, "cpu"], value="Auto",
                                  interactive=True)
+            enhance = gr.Checkbox(label="是否使用NSF_HIFIGAN增强,该选项对部分训练集少的模型有一定的音质增强效果，\
+                                  但是对训练好的模型有反面效果，默认关闭",
+                                  value=False)
             gr.Markdown(value="""
                 <font size=3>选择完模型后点击加载模型：</font>
                 """)
@@ -322,7 +335,8 @@ with app:
 
             load_model_button.click(
                 load_model_func,
-                inputs=[choice_model, choice_config, choice_kmeans_model],
+                inputs=[choice_model, choice_config,
+                        choice_kmeans_model, enhance],
                 outputs=[sid, sid_output])
 
             text2tts = gr.Textbox(label="在此输入要转译的文字。注意，使用该功能建议打开F0预测，不然会很怪")
@@ -353,6 +367,8 @@ with app:
             lgr_num = gr.Number(
                 label="自动音频切片后，需要舍弃每段切片的头尾。该参数设置交叉长度保留的比例，范围0-1,左开右闭", value=0.75,
                 interactive=True)
+            enhancer_adaptive_key = gr.Number(label="使增强器适应更高的音域(单位为半音数)|默认为0",
+                                              value=0, interactive=True)
             vc_submit = gr.Button("音频直接转换", variant="primary")
             vc_submit2 = gr.Button("文字转音频+转换", variant="primary")
             bacth_convert_button = gr.Button("批量转换音频", variant="primary")
@@ -361,18 +377,19 @@ with app:
             vc_output2 = gr.Audio(label="Output Audio")
         vc_submit.click(vc_fn, [sid, vc_input3, vc_transform, auto_f0, cluster_ratio,
                                 slice_db, noise_scale, pad_seconds, cl_num, lg_num,
-                                lgr_num, F0_mean_pooling,
+                                lgr_num, F0_mean_pooling, enhancer_adaptive_key,
                                 output_path], [vc_output1, vc_output2])
         vc_submit2.click(vc_fn2, [sid, vc_transform, auto_f0, cluster_ratio,
                                   slice_db, noise_scale, pad_seconds, cl_num, lg_num,
                                   lgr_num, text2tts, tts_rate, F0_mean_pooling,
+                                  enhancer_adaptive_key,
                                   output_path],
                          [vc_output1, vc_output2])
         bacth_convert_button.click(batch_vc, [sid, bacth_convert_folder, vc_transform,
                                               auto_f0,
                                               cluster_ratio, slice_db, noise_scale,
                                               pad_seconds, cl_num, lg_num, lgr_num,
-                                              F0_mean_pooling,
+                                              F0_mean_pooling, enhancer_adaptive_key,
                                               output_path], [vc_output1])
 
 app.queue(concurrency_count=20).launch(server_name="0.0.0.0", server_port=7863)
