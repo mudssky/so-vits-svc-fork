@@ -1,10 +1,13 @@
 # SoftVC VITS Singing Voice Conversion
 
-The project has been officially stopped for maintenance.
+In the field of Singing Voice Conversion, there is not only one project, SoVitsSvc, but also many other projects, which will not be listed here. The project was officially discontinued for maintenance and Archived.
+However, there are still other enthusiasts who have created their own branches and continue to maintain the SoVitsSvc project (still unrelated to SvcDevelopTeam and the repository maintainers) and have made some big changes to it for you to find out for yourself.
 
 #### ✨ A fork with a greatly improved interface: [34j/so-vits-svc-fork](https://github.com/34j/so-vits-svc-fork)
 
 #### ✨ A client supports real-time conversion: [w-okada/voice-changer](https://github.com/w-okada/voice-changer)
+
+#### This project is fundamentally different from Vits. Vits is TTS and this project is SVC. TTS cannot be carried out in this project, and Vits cannot carry out SVC, and the two project models are not universal
 
 ## Disclaimer
 
@@ -215,7 +218,7 @@ Introduction: The mean filtering of F0 can effectively reduce the hoarse sound c
 
 - Set `f0_mean_pooling` to true in `inference_main.py`
 
-### [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kv-3y2DmZo0uya8pEr1xk7cSB-4e_Pct?usp=sharing) [sovits4_for_colab.ipynb](https://colab.research.google.com/drive/1kv-3y2DmZo0uya8pEr1xk7cSB-4e_Pct?usp=sharing)
+### [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/svc-develop-team/so-vits-svc/blob/4.0/sovits4_for_colab.ipynb) [sovits4_for_colab.ipynb](https://colab.research.google.com/github/svc-develop-team/so-vits-svc/blob/4.0/sovits4_for_colab.ipynb)
 
 **[23/03/16] No longer need to download hubert manually**
 
